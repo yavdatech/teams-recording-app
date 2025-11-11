@@ -1,0 +1,15 @@
+{
+  "name": "figma-designs-gallery",
+  "version": "0.1.0",
+  "description": "Local server to view all Figma designs with tabbed navigation",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "build-all": "node build-all.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
+
