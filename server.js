@@ -313,7 +313,7 @@ app.get('/', (req, res) => {
 <body>
     <div class="header">
         <h1>🎨 Figma Designs Gallery</h1>
-        <button class="export-btn" id="exportBtn" title="Export current design as PNG" onclick="if(typeof exportDesign === 'function') exportDesign(event); else console.error('exportDesign function not defined');">
+        <button class="export-btn" id="exportBtn" title="Export current design as PNG">
             📥 Export PNG
         </button>
     </div>
@@ -334,7 +334,7 @@ app.get('/', (req, res) => {
                 <div class="loading">Loading ${design}...</div>
                 <iframe src="/${encodeURIComponent(design)}/" 
                         id="iframe-${index}"
-                        onload="handleIframeLoad(${index})"
+                        onload="window.handleIframeLoad(${index})"
                         onerror="handleIframeError(${index})"
                         sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals">
                 </iframe>
@@ -357,7 +357,9 @@ app.get('/', (req, res) => {
             document.getElementById('frame-' + index).classList.add('active');
         }
         
-        function handleIframeLoad(index) {
+        // Make handleIframeLoad globally accessible - define it early
+        if (!window.handleIframeLoad) {
+            window.handleIframeLoad = function(index) {
             const wrapper = document.getElementById('frame-' + index);
             const loading = wrapper.querySelector('.loading');
             const iframe = wrapper.querySelector('iframe');
@@ -388,6 +390,7 @@ app.get('/', (req, res) => {
                     iframe.style.height = '100vh';
                 }
             }
+            };
         }
         
         function handleIframeError(index) {
@@ -416,25 +419,23 @@ app.get('/', (req, res) => {
             });
         }
         
-        // Attach export button click handler - use window.onload to ensure everything is ready
-        window.addEventListener('load', function() {
+        // Attach export button click handler - prevent duplicate listeners
+        let exportHandlerAttached = false;
+        function attachExportHandler() {
+            if (exportHandlerAttached) return;
             const exportBtn = document.getElementById('exportBtn');
             if (exportBtn) {
                 exportBtn.addEventListener('click', exportDesign);
+                exportHandlerAttached = true;
                 console.log('Export button handler attached');
-            } else {
-                console.error('Export button not found!');
             }
-        });
+        }
         
-        // Also attach immediately in case DOM is already loaded
-        (function() {
-            const exportBtn = document.getElementById('exportBtn');
-            if (exportBtn) {
-                exportBtn.addEventListener('click', exportDesign);
-                console.log('Export button handler attached (immediate)');
-            }
-        })();
+        // Try to attach immediately
+        attachExportHandler();
+        
+        // Also try on load in case DOM wasn't ready
+        window.addEventListener('load', attachExportHandler);
         
         // Export design as PNG
         async function exportDesign(e) {
@@ -484,7 +485,7 @@ app.get('/', (req, res) => {
                 
                 console.log('Iframe document accessed');
                 
-                // Get the body element
+                // Get the body and html elements
                 const body = iframeDoc.body;
                 const html = iframeDoc.documentElement;
                 
@@ -492,22 +493,86 @@ app.get('/', (req, res) => {
                 const activeTab = document.querySelector('.tab.active');
                 const designName = activeTab ? activeTab.textContent.trim() : 'design';
                 
-                // Calculate the full height of the content
+                // Scroll to top to ensure we start from the beginning
+                iframeDoc.documentElement.scrollTop = 0;
+                iframeDoc.body.scrollTop = 0;
+                iframe.contentWindow.scrollTo(0, 0);
+                
+                // Wait a moment for scroll to complete
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
+                // Calculate the full dimensions of the content
+                // Use the maximum of all possible measurements
                 const fullHeight = Math.max(
                     body.scrollHeight,
                     body.offsetHeight,
-                    html.clientHeight,
                     html.scrollHeight,
-                    html.offsetHeight
+                    html.offsetHeight,
+                    html.clientHeight,
+                    body.clientHeight
                 );
                 
                 const fullWidth = Math.max(
                     body.scrollWidth,
                     body.offsetWidth,
-                    html.clientWidth,
                     html.scrollWidth,
-                    html.offsetWidth
+                    html.offsetWidth,
+                    html.clientWidth,
+                    body.clientWidth
                 );
+                
+                // Get the actual rendered dimensions by checking all possible measurements
+                // Also check for elements that might extend beyond the viewport
+                const allElements = body.querySelectorAll('*');
+                let maxBottom = 0;
+                let maxRight = 0;
+                
+                allElements.forEach(el => {
+                    const rect = el.getBoundingClientRect();
+                    const bottom = rect.bottom + (iframe.contentWindow.pageYOffset || 0);
+                    const right = rect.right + (iframe.contentWindow.pageXOffset || 0);
+                    if (bottom > maxBottom) maxBottom = bottom;
+                    if (right > maxRight) maxRight = right;
+                });
+                
+                // Use the maximum of all measurements
+                const actualFullHeight = Math.max(
+                    fullHeight,
+                    maxBottom,
+                    body.scrollHeight,
+                    html.scrollHeight,
+                    iframe.contentWindow.innerHeight || 0,
+                    iframe.contentWindow.document.documentElement.scrollHeight || 0
+                );
+                
+                const actualFullWidth = Math.max(
+                    fullWidth,
+                    maxRight,
+                    body.scrollWidth,
+                    html.scrollWidth,
+                    iframe.contentWindow.innerWidth || 0,
+                    iframe.contentWindow.document.documentElement.scrollWidth || 0
+                );
+                
+                console.log('Content dimensions (calculated):', { width: fullWidth, height: fullHeight });
+                console.log('Content dimensions (actual):', { width: actualFullWidth, height: actualFullHeight });
+                console.log('Max element positions:', { bottom: maxBottom, right: maxRight });
+                console.log('Body dimensions:', { 
+                    scrollHeight: body.scrollHeight, 
+                    scrollWidth: body.scrollWidth,
+                    offsetHeight: body.offsetHeight,
+                    offsetWidth: body.offsetWidth
+                });
+                console.log('HTML dimensions:', {
+                    scrollHeight: html.scrollHeight,
+                    scrollWidth: html.scrollWidth,
+                    offsetHeight: html.offsetHeight,
+                    offsetWidth: html.offsetWidth
+                });
+                
+                // Use the actual dimensions
+                const finalWidth = actualFullWidth;
+                const finalHeight = actualFullHeight;
                 
                 // Use html2canvas (or html2canvas-pro if loaded) for export
                 console.log('Starting export with html2canvas...');
@@ -515,19 +580,117 @@ app.get('/', (req, res) => {
                 
                 if (typeof html2canvas !== 'undefined') {
                     try {
+                        // Wait for all images to load in the iframe
+                        const images = html.querySelectorAll('img');
+                        const imagePromises = Array.from(images).map(img => {
+                            if (img.complete) return Promise.resolve();
+                            return new Promise((resolve) => {
+                                img.onload = resolve;
+                                img.onerror = resolve; // Continue even if image fails
+                                setTimeout(resolve, 2000); // Timeout after 2 seconds
+                            });
+                        });
+                        await Promise.all(imagePromises);
+                        console.log('All images loaded');
+                        
+                        // Capture directly from iframe but ensure it's fully expanded
+                        // Store original iframe dimensions
+                        const originalIframeHeight = iframe.style.height || '';
+                        const originalIframeWidth = iframe.style.width || '';
+                        
+                        // Expand iframe to full content size
+                        iframe.style.width = finalWidth + 'px';
+                        iframe.style.height = finalHeight + 'px';
+                        iframe.style.overflow = 'hidden';
+                        
+                        // Also ensure the iframe document is set to full size
+                        html.style.width = finalWidth + 'px';
+                        html.style.height = finalHeight + 'px';
+                        html.style.overflow = 'hidden';
+                        body.style.width = finalWidth + 'px';
+                        body.style.height = finalHeight + 'px';
+                        body.style.overflow = 'hidden';
+                        body.style.minHeight = finalHeight + 'px';
+                        
+                        // Force a reflow
+                        void body.offsetHeight;
+                        
+                        // Scroll through the content to ensure everything is rendered
+                        // Some browsers need content to be in viewport to render it
+                        const scrollStep = 500;
+                        const maxScroll = finalHeight;
+                        for (let scrollY = 0; scrollY <= maxScroll; scrollY += scrollStep) {
+                            iframe.contentWindow.scrollTo(0, scrollY);
+                            await new Promise(resolve => setTimeout(resolve, 100));
+                        }
+                        // Scroll back to top
+                        iframe.contentWindow.scrollTo(0, 0);
+                        await new Promise(resolve => setTimeout(resolve, 300));
+                        
+                        // Wait for layout to fully update
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                        
+                        // Now capture directly from the expanded iframe body
                         const canvas = await html2canvas(body, {
-                            width: fullWidth,
-                            height: fullHeight,
+                            width: finalWidth,
+                            height: finalHeight,
                             useCORS: true,
-                            allowTaint: false,
+                            allowTaint: true,
                             scale: 1,
                             logging: false,
-                            windowWidth: fullWidth,
-                            windowHeight: fullHeight,
+                            windowWidth: finalWidth,
+                            windowHeight: finalHeight,
                             scrollX: 0,
                             scrollY: 0,
-                            backgroundColor: '#ffffff'
+                            x: 0,
+                            y: 0,
+                            backgroundColor: '#ffffff',
+                            removeContainer: false,
+                            foreignObjectRendering: false,
+                            onclone: function(clonedDoc, element) {
+                                // Ensure cloned document has full dimensions
+                                const clonedBody = clonedDoc.body;
+                                const clonedHtml = clonedDoc.documentElement;
+                                
+                                clonedHtml.style.width = finalWidth + 'px';
+                                clonedHtml.style.height = finalHeight + 'px';
+                                clonedHtml.style.overflow = 'visible';
+                                
+                                clonedBody.style.width = finalWidth + 'px';
+                                clonedBody.style.height = finalHeight + 'px';
+                                clonedBody.style.overflow = 'visible';
+                                clonedBody.style.minHeight = finalHeight + 'px';
+                                clonedBody.style.margin = '0';
+                                clonedBody.style.padding = '0';
+                                
+                                // Ensure all images are properly loaded
+                                const clonedImages = clonedBody.querySelectorAll('img');
+                                clonedImages.forEach((img, idx) => {
+                                    const originalImg = images[idx];
+                                    if (originalImg && originalImg.src) {
+                                        img.src = originalImg.src;
+                                        img.style.maxWidth = 'none';
+                                        img.style.maxHeight = 'none';
+                                    }
+                                });
+                                
+                                console.log('Cloned document prepared with dimensions:', finalWidth, 'x', finalHeight);
+                            }
                         });
+                        
+                        // Restore original iframe dimensions
+                        iframe.style.width = originalIframeWidth;
+                        iframe.style.height = originalIframeHeight;
+                        iframe.style.overflow = '';
+                        html.style.width = '';
+                        html.style.height = '';
+                        html.style.overflow = '';
+                        body.style.width = '';
+                        body.style.height = '';
+                        body.style.overflow = '';
+                        body.style.minHeight = '';
+                        
+                        console.log('Canvas created, dimensions:', canvas.width, 'x', canvas.height);
                         
                         console.log('Canvas created successfully');
                         canvas.toBlob(function(blob) {
