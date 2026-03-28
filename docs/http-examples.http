@@ -1,0 +1,104 @@
+@baseUrl = http://localhost:3000
+@subscriptionId = replace-me
+@callId = replace-me
+
+### Health
+GET {{baseUrl}}/healthz
+
+### List managed subscriptions
+GET {{baseUrl}}/api/subscriptions
+
+### Force a subscription sync
+POST {{baseUrl}}/api/subscriptions/sync
+
+### Reauthorize one subscription
+POST {{baseUrl}}/api/subscriptions/{{subscriptionId}}/reauthorize
+
+### Graph webhook validation handshake
+POST {{baseUrl}}/webhooks/graph?validationToken=test-token
+
+### Ask the Teams bot to join a meeting by joinWebUrl
+POST {{baseUrl}}/api/bot/join
+Content-Type: application/json
+
+{
+  "joinWebUrl": "https://teams.microsoft.com/l/meetup-join/19%3ameeting_example%40thread.v2/0?context=%7B%22Tid%22%3A%2200000000-0000-0000-0000-000000000000%22%2C%22Oid%22%3A%2211111111-1111-1111-1111-111111111111%22%7D"
+}
+
+### List tracked bot calls
+GET {{baseUrl}}/api/bot/calls
+
+### Leave one tracked call
+POST {{baseUrl}}/api/bot/calls/{{callId}}/leave
+
+### Register a meeting for compliance enforcement
+POST {{baseUrl}}/api/compliance/meetings/register
+Content-Type: application/json
+
+{
+  "tenantId": "00000000-0000-0000-0000-000000000000",
+  "parentResourceType": "onlineMeeting",
+  "parentResourceId": "MsoMeetingId",
+  "title": "Quarterly Review",
+  "organizerUserId": "11111111-1111-1111-1111-111111111111",
+  "organizerUpn": "organizer@contoso.com",
+  "startedAt": "2026-03-28T15:00:00.000Z",
+  "endedAt": "2026-03-28T16:00:00.000Z",
+  "expectedArtifacts": {
+    "recordingRequired": true,
+    "transcriptRequired": true
+  },
+  "gracePeriodMinutes": 30
+}
+
+### List compliance cases
+GET {{baseUrl}}/api/compliance/meetings
+
+### Compliance summary
+GET {{baseUrl}}/api/compliance/summary
+
+### Example Teams call callback notification
+POST {{baseUrl}}/webhooks/teams/calls
+Content-Type: application/json
+
+{
+  "value": [
+    {
+      "resource": "/communications/calls/22222222-2222-2222-2222-222222222222",
+      "resourceData": {
+        "callChainId": "33333333-3333-3333-3333-333333333333",
+        "state": "terminated",
+        "tenantId": "00000000-0000-0000-0000-000000000000"
+      }
+    }
+  ]
+}
+
+### Example resource notification payload
+POST {{baseUrl}}/webhooks/graph
+Content-Type: application/json
+
+{
+  "validationTokens": [
+    "eyJhbGciOiJSUzI1NiIsImtpZCI6IkV4YW1wbGUifQ.example"
+  ],
+  "value": [
+    {
+      "subscriptionId": "11111111-1111-1111-1111-111111111111",
+      "changeType": "created",
+      "clientState": "replace-with-long-random-secret",
+      "resource": "users/22222222-2222-2222-2222-222222222222/onlineMeetings('MsoMeetingId')/transcripts('TranscriptId')",
+      "tenantId": "33333333-3333-3333-3333-333333333333",
+      "resourceData": {
+        "id": "TranscriptId",
+        "@odata.type": "#Microsoft.Graph.callTranscript"
+      },
+      "encryptedContent": {
+        "data": "base64-ciphertext",
+        "dataKey": "base64-key",
+        "dataSignature": "base64-signature",
+        "encryptionCertificateId": "teams-recordings-webhook-cert"
+      }
+    }
+  ]
+}
