@@ -1,3 +1,142 @@
+# Teams Recording App
+
+This repository implements a backend service that integrates with Microsoft Teams call events and the Microsoft Graph change-notifications pipeline to ingest meeting artifacts (recordings, transcripts, and metadata) and run downstream compliance/ingestion workflows.
+
+Key features
+- Receive Graph change-notifications for call/meeting artifacts
+- Fetch recordings/transcripts from Microsoft Graph and store in Azure Blob Storage
+- Optional Service Bus-backed ingestion queues and compliance notification workflows
+- A small bot integration used to join meetings (configurable)
+
+Project layout (high-level)
+- `src/auth/` — credential and token helpers
+- `src/bot/` — bot-related logic and call-control
+- `src/graph/` — Graph client and helpers
+- `src/ingestion/` — artifact fetch + ingestion worker
+- `src/storage/` — Azure Blob helpers
+- `src/webhook/` — HTTP handlers for Graph notifications
+- `appPackage/` — Teams manifest template and package helper
+
+Prerequisites
+- Node.js >= 20.11.0 (see `package.json` engines)
+- npm (or yarn)
+- An Azure subscription and an Azure AD App Registration with credentials (client secret or certificate) or a Managed Identity
+- An Azure Storage account (connection string) to host blobs
+- A public HTTPS endpoint for Microsoft Graph notifications (ngrok for local testing)
+
+Quickstart — local development
+1. Clone the repo (already done) and install dependencies:
+
+```bash
+npm install
+```
+
+2. Create a `.env` file at the project root with the minimum required values (example below).
+
+3. Run in development mode (auto-reload):
+
+```bash
+npm run dev
+```
+
+4. To build and run the production bundle locally:
+
+```bash
+npm run build
+npm run start
+```
+
+Recommended local testing workflow
+- Use `ngrok` (or any HTTPS tunnel) to expose your local server so Microsoft Graph can deliver notifications:
+
+```bash
+ngrok http 3000
+# set GRAPH_NOTIFICATION_URL to https://<your-ngrok-id>.ngrok.io/webhook/notifications
+```
+
+Environment variables (minimum example)
+Create `.env` and populate required values. The full set of variables is defined in `src/config/env.ts` and validated at startup.
+
+```env
+# App
+NODE_ENV=development
+PORT=3000
+
+# Azure identity
+AZURE_TENANT_ID=<your-tenant-id>
+AZURE_CLIENT_ID=<app-client-id>
+# Provide either a client secret or certificate, or enable managed identity
+AZURE_CLIENT_SECRET=<client-secret>
+# AZURE_CLIENT_CERTIFICATE_PATH=/path/to/cert.p12
+# AZURE_CLIENT_CERTIFICATE_PASSWORD=secret
+AZURE_USE_MANAGED_IDENTITY=false
+
+# Microsoft Graph
+GRAPH_NOTIFICATION_URL=https://your-public-url.example.com/webhook/notifications
+GRAPH_LIFECYCLE_NOTIFICATION_URL=https://your-public-url.example.com/webhook/notification-lifecycle
+GRAPH_NOTIFICATION_CLIENT_STATE=<random-16+chars>
+
+# Storage
+AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=...;
+
+# Queue (optional)
+QUEUE_MODE=memory
+# If using service bus:
+# AZURE_SERVICE_BUS_CONNECTION_STRING=Endpoint=sb://...;
+
+# Bot (optional)
+BOT_ENABLED=true
+BOT_APP_ID=<bot-app-id>
+BOT_CALLBACK_URL=https://your-public-url.example.com/bot/callback
+
+```
+
+Notes about authentication
+- The app supports three authentication approaches for Graph API calls:
+  - Managed Identity (`AZURE_USE_MANAGED_IDENTITY=true`) — recommended when running in Azure
+  - Client certificate (`AZURE_CLIENT_CERTIFICATE_PATH`) — store a p12/pem and provide the path
+  - Client secret (`AZURE_CLIENT_SECRET`) — simplest for local testing
+
+Graph change-notifications and encryption
+- If you enable `GRAPH_INCLUDE_RESOURCE_DATA`, the app requires an encryption certificate and associated private key (see `GRAPH_ENCRYPTION_CERTIFICATE_PATH`, `GRAPH_ENCRYPTION_PRIVATE_KEY_PATH`, and `GRAPH_ENCRYPTION_CERTIFICATE_ID` in `src/config/env.ts`).
+
+Teams app package
+- The Teams app manifest template is in `appPackage/manifest.template.json`. Use the provided script to render a package (this script uses bash):
+
+```bash
+npm run render:teams-package
+```
+
+On Windows you may need WSL, Git Bash, or to adapt the script if you do not have bash.
+
+Docker
+- Build a container with the included `Dockerfile`:
+
+```bash
+docker build -t teams-recording-app .
+docker run --env-file .env -p 3000:3000 teams-recording-app
+```
+
+Deployment notes
+- You can deploy the container to any container host (Azure Container Apps, Azure Web App for Containers, AKS, etc.).
+- If using Azure, prefer Managed Identity and configure app settings to match the same environment variables shown above.
+- Ensure your deployed app has a public HTTPS endpoint that Microsoft Graph can reach, and update `GRAPH_NOTIFICATION_URL` and lifecycle URLs accordingly.
+
+Security and secrets
+- Never commit secrets to source control. Use Azure Key Vault, App Settings, or your cloud provider's secret manager in production.
+
+Where to look in the codebase
+- Configuration and validation: `src/config/env.ts`
+- Graph token and requests: `src/auth/`, `src/graph/graph-client.ts`
+- Webhooks: `src/webhook/` and `src/webhook/routes.ts`
+- Artifact ingestion: `src/ingestion/`
+
+Next steps I can do for you
+- Add a `.env.sample` file with the minimal variables
+- Create GitHub Actions workflow to build and publish a container
+- Add a short `docs/` page showing how to register the Azure AD App with the exact Microsoft Graph permissions needed
+
+If you'd like, I can commit a `.env.sample` now and push it. Which next step should I take?
 # Teams Meeting Recorder Platform
 
 Production-oriented Node.js + TypeScript backend for two related capabilities:
