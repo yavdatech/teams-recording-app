@@ -376,6 +376,169 @@ Upload the generated zip to your org catalog or via the Teams developer tooling/
 
 Use Teams app setup policies to install/pin the app for users. That helps with distribution but does not itself make the bot join all meetings automatically.
 
+## Option 1: Enforce Recording Behavior
+
+This is the closest practical way to maximize recording and transcription coverage at the tenant level.
+
+### Goal
+
+Make Teams meetings default toward recording/transcription-friendly behavior by using admin policy and meeting templates.
+
+### Step by step
+
+1. Review your target scope.
+   Decide whether you want to apply the policy org-wide first or pilot it with a specific user group.
+2. Configure Teams meeting policy.
+   In Teams admin center, go to `Meetings > Meeting policies`.
+   Create a dedicated policy or update an existing one.
+3. Enable recording-related settings in the policy.
+   At minimum, review and configure:
+   - cloud recording
+   - transcription
+   - captions/transcript-related controls
+   - anonymous/guest meeting behavior if relevant to your tenant
+4. Assign the policy to the target organizers.
+   Use per-user policy assignment or policy packages/groups as appropriate.
+5. Configure meeting templates.
+   In Teams admin center, go to `Meetings > Meeting templates` and `Meetings > Meeting template policies`.
+   Use templates to set or lock meeting defaults such as:
+   - `Record meetings automatically`
+   - who can record
+   - lobby/presenter defaults
+   - meeting chat and participation settings
+6. If you have Teams Premium, use custom meeting templates for stronger enforcement.
+   This is where you can lock more meeting options instead of only suggesting defaults.
+7. Preinstall your app if needed.
+   Use `Teams apps > Setup policies` if you want the Meeting Recorder app visible to organizers.
+8. Validate with test organizers.
+   Schedule sample meetings and confirm:
+   - recording can start as expected
+   - transcripts are produced
+   - artifacts land where expected
+   - your ingestion service receives notifications
+9. Roll out gradually.
+   Start with a pilot group, then broaden assignment once artifact coverage and organizer behavior look healthy.
+
+### Automation for Option 1
+
+Current official automation path is primarily **Microsoft Teams PowerShell**.
+
+What you can automate now with PowerShell:
+- create/update meeting policies with `New-CsTeamsMeetingPolicy` and `Set-CsTeamsMeetingPolicy`
+- assign them with `Grant-CsTeamsMeetingPolicy`
+- manage meeting template visibility policies with `New-CsTeamsMeetingTemplatePermissionPolicy`, `Set-CsTeamsMeetingTemplatePermissionPolicy`, and `Grant-CsTeamsMeetingTemplatePermissionPolicy`
+
+What I found for current Microsoft surfaces:
+- PowerShell: yes
+- Teams admin center: yes
+- Azure CLI: I did **not** find an official Azure CLI surface for Teams meeting policies/templates
+- Microsoft Graph API: I did **not** find an official Graph admin API for managing Teams meeting policies/templates in the same way
+
+That last point is an inference from the current Microsoft Learn surfaces I checked. The official admin path I found today is Teams admin center plus Teams PowerShell.
+
+Useful references:
+- `Set-CsTeamsMeetingPolicy`:
+  https://learn.microsoft.com/en-us/powershell/module/microsoftteams/set-csteamsmeetingpolicy?view=teams-ps
+- `Grant-CsTeamsMeetingPolicy`:
+  https://learn.microsoft.com/en-us/powershell/module/microsoftteams/grant-csteamsmeetingpolicy?view=teams-ps
+- Meeting templates admin guide:
+  https://learn.microsoft.com/en-us/microsoftteams/manage-meeting-templates
+- Custom meeting templates overview:
+  https://learn.microsoft.com/en-us/microsoftteams/custom-meeting-templates-overview
+- Predefined meeting template reference:
+  https://learn.microsoft.com/en-us/microsoftteams/predefined-meeting-template-reference
+
+### Example PowerShell flow
+
+```powershell
+Connect-MicrosoftTeams
+
+New-CsTeamsMeetingPolicy -Identity "RecordingRequiredPolicy"
+
+Set-CsTeamsMeetingPolicy `
+  -Identity "RecordingRequiredPolicy" `
+  -AllowCloudRecording $true `
+  -AllowTranscription $true
+
+Grant-CsTeamsMeetingPolicy `
+  -Identity "RecordingRequiredPolicy" `
+  -PolicyName "RecordingRequiredPolicy"
+```
+
+If you want different meeting-template visibility by group, use Teams meeting template permission policies on top of that.
+
+## Option 2: Build Org-Wide Ingestion
+
+This is the scalable backend path and it maps directly to the service in this repository.
+
+### Goal
+
+Ingest recordings and transcripts centrally after Teams produces them, store them in Azure, and drive governance/compliance from the resulting events.
+
+### Step by step
+
+1. Create or choose your Entra app registration.
+   This is the identity used by the ingestion backend.
+2. Grant Graph application permissions and admin consent.
+   At minimum for scheduled online meetings:
+   - `OnlineMeetingRecording.Read.All`
+   - `OnlineMeetingTranscript.Read.All`
+   - `OnlineMeetings.Read.All`
+3. Configure Teams application access policy where required for organizer access patterns.
+4. Generate the Graph rich-notification certificate pair.
+   This repo expects a public certificate and matching private key for webhook decryption.
+5. Provision Azure resources.
+   - Blob Storage
+   - Service Bus for production
+   - public HTTPS host for the webhook service
+6. Configure `.env`.
+   Important values:
+   - `GRAPH_NOTIFICATION_URL`
+   - `GRAPH_LIFECYCLE_NOTIFICATION_URL`
+   - `GRAPH_SUBSCRIPTION_MODE`
+   - `GRAPH_INCLUDE_RESOURCE_DATA`
+   - storage and queue settings
+7. Deploy the service.
+   Run the backend and confirm startup succeeds.
+8. Sync subscriptions.
+   Call `POST /api/subscriptions/sync` or let startup do it automatically.
+9. Validate webhook delivery.
+   Confirm Graph can reach:
+   - `/webhooks/graph`
+   - `/webhooks/graph/lifecycle`
+10. Validate artifact ingestion.
+   Run a test meeting, produce a recording/transcript, and confirm:
+   - Blob artifact files are written
+   - downstream events are emitted
+   - compliance cases resolve if registered
+11. Turn on compliance tracking.
+   Register expected meetings and use the compliance APIs/events to flag missing recordings or transcripts.
+
+### What Option 2 automates
+
+- Graph subscription lifecycle
+- webhook validation and decryption
+- content fetch from Graph
+- Blob persistence
+- downstream events
+- compliance detection and reminders
+
+### What Option 2 does not automate
+
+- forcing a user to record
+- guaranteeing every meeting is recorded
+- replacing Teams admin policy
+
+### Storage/source note
+
+Microsoft currently documents that Teams meeting recordings and transcripts are stored in OneDrive and SharePoint, typically in the organizer’s OneDrive for meeting recordings. Your backend does not need to poll those locations directly for the primary design in this repo because it uses Graph change notifications as the trigger and Graph content retrieval as the fetch path.
+
+Useful references:
+- Teams recording/transcript storage:
+  https://learn.microsoft.com/en-us/microsoftteams/tmr-meeting-recording-change
+- Graph transcript/recording notifications:
+  https://learn.microsoft.com/en-us/graph/teams-changenotifications-callrecording-and-calltranscript
+
 ## Environment Variables
 
 Use `.env.example` as the source of truth.
