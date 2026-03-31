@@ -1,0 +1,31 @@
+# DigitalOcean App Platform manifest template for reference
+# Replace placeholder values or let the GitHub Actions workflow generate the final manifest.
+name: teams-recording-app
+region: nyc3
+services:
+  - name: web
+    github:
+      repo: yavdaanalytics/teams-recording-app
+      branch: main
+      deploy_on_push: true
+    dockerfile_path: Dockerfile
+    run_command: node dist/index.js
+    instance_size_slug: basic-xxs
+    instance_count: 1
+    # Example envs; do not commit secrets to the repository. Set these via DO dashboard or CI secrets.
+    envs:
+      - key: AZURE_TENANT_ID
+        value: "<AZURE_TENANT_ID>"
+        scope: RUN
+      - key: AZURE_CLIENT_ID
+        value: "<AZURE_CLIENT_ID>"
+        scope: RUN
+      - key: AZURE_CLIENT_SECRET
+        value: "<AZURE_CLIENT_SECRET>"
+        scope: RUN
+      - key: AZURE_USE_MANAGED_IDENTITY
+        value: "false"
+        scope: RUN
+      - key: GRAPH_NOTIFICATION_CLIENT_STATE
+        value: "<GRAPH_NOTIFICATION_CLIENT_STATE>"
+        scope: RUN
