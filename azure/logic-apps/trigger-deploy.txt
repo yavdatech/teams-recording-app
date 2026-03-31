@@ -1,0 +1,4 @@
+Trigger deploy for Logic App
+Timestamp: 2026-03-31T
+
+This file is a no-op placeholder to trigger CI workflow.
