@@ -1,0 +1,44 @@
+name: Deploy Azure Function
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        working-directory: ./azure/functions/copy-worker
+        run: |
+          npm ci
+
+      - name: Build (placeholder)
+        working-directory: ./azure/functions/copy-worker
+        run: |
+          # add build steps if needed
+          echo "no build step"
+
+      - name: Archive function package
+        run: |
+          cd azure/functions/copy-worker
+          zip -r ../../copy-worker-package.zip .
+
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy Function App (zip deploy)
+        uses: azure/webapps-deploy@v2
+        with:
+          app-name: ${{ secrets.FUNCTION_APP_NAME }}
+          slot-name: production
+          package: copy-worker-package.zip
