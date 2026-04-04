@@ -55,18 +55,12 @@ async function graphSearch(accessToken) {
 }
 
 async function targetHasFile(accessToken, filename) {
-  if (!TARGET_DRIVE_ID || !TARGET_FOLDER_ID) return false;
-  const url = `https://graph.microsoft.com/v1.0/drives/${TARGET_DRIVE_ID}/items/${TARGET_FOLDER_ID}/children?$select=name,id`;
-  const res = await fetch(url, { method: 'GET', headers: { Authorization: `Bearer ${accessToken}` } });
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`${LOG_PREFIX} error listing target folder: ${res.status} ${txt}`);
-  }
-  const json = await res.json();
-  return (json.value || []).some(i => i.name === filename);
+  // Deprecated: scan now resolves target drive/folder at runtime. Keep for compatibility.
+  return false;
 }
 
 async function copyToTarget(accessToken, sourceDriveId, itemId, filename) {
+  // Old signature kept for compatibility. New callers should pass explicit target ids.
   const url = `https://graph.microsoft.com/v1.0/drives/${sourceDriveId}/items/${itemId}/copy`;
   const body = {
     parentReference: { driveId: TARGET_DRIVE_ID, id: TARGET_FOLDER_ID },
@@ -80,13 +74,73 @@ async function copyToTarget(accessToken, sourceDriveId, itemId, filename) {
   return { ok: false, status: res.status, body: txt };
 }
 
+// New helper: copy with explicit target drive/folder ids
+async function copyToTargetExplicit(accessToken, sourceDriveId, itemId, filename, targetDriveId, targetFolderId) {
+  const url = `https://graph.microsoft.com/v1.0/drives/${sourceDriveId}/items/${itemId}/copy`;
+  const body = {
+    parentReference: { driveId: targetDriveId, id: targetFolderId },
+    name: filename
+  };
+  const res = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (res.status === 202 || res.status === 201 || res.status === 200) return { ok: true, status: res.status };
+  const txt = await res.text();
+  return { ok: false, status: res.status, body: txt };
+}
+
+// Resolve a SharePoint TARGET_URL into a driveId and folderId via Graph
+async function resolveTargetFromUrl(accessToken, targetUrl) {
+  try {
+    const u = new URL(targetUrl);
+    const hostname = u.hostname; // e.g., contoso.sharepoint.com
+    let serverRelative = u.searchParams.get('id');
+    if (serverRelative) serverRelative = decodeURIComponent(serverRelative);
+    else {
+      const m = u.pathname.match(/\/sites\/([^\/]+)/i);
+      if (m && m[1]) serverRelative = `/sites/${m[1]}`;
+    }
+    if (!serverRelative) return null;
+    const parts = serverRelative.split('/').filter(Boolean);
+    if (parts.length < 2 || parts[0].toLowerCase() !== 'sites') return null;
+    const siteName = parts[1];
+    let libPathParts = parts.slice(2);
+    if (libPathParts.length && libPathParts[0].toLowerCase() === 'shared documents') libPathParts = libPathParts.slice(1);
+    const libPath = libPathParts.join('/');
+
+    const siteUrl = `https://graph.microsoft.com/v1.0/sites/${hostname}:/sites/${encodeURIComponent(siteName)}:`;
+    const siteRes = await fetch(siteUrl, { method: 'GET', headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!siteRes.ok) return null;
+    const siteJson = await siteRes.json();
+    const siteId = siteJson.id;
+
+    const encodedPath = libPath ? encodeURIComponent(libPath).replace(/%2F/g, '/') : '';
+    const driveItemUrl = encodedPath
+      ? `https://graph.microsoft.com/v1.0/sites/${encodeURIComponent(siteId)}/drive/root:/${encodedPath}`
+      : `https://graph.microsoft.com/v1.0/sites/${encodeURIComponent(siteId)}/drive/root`;
+    const diRes = await fetch(driveItemUrl, { method: 'GET', headers: { Authorization: `Bearer ${accessToken}` } });
+    if (!diRes.ok) return null;
+    const diJson = await diRes.json();
+    const driveId = diJson.parentReference && diJson.parentReference.driveId ? diJson.parentReference.driveId : diJson.driveId || null;
+    const folderId = diJson.id;
+    if (!driveId || !folderId) return null;
+    return { driveId, folderId };
+  } catch (e) {
+    return null;
+  }
+}
+
 module.exports = async function (context, myTimer) {
   context.log(`${LOG_PREFIX} invoked`);
   try {
     const accessToken = await getAccessToken();
     context.log(`${LOG_PREFIX} acquired token`);
-      const items = await graphSearch(accessToken);
-      context.log(`${LOG_PREFIX} found ${items.length} mp4 items`);
+    // Resolve SharePoint target (if TARGET_URL provided) so we can copy into it
+    let resolvedTarget = null;
+    if (process.env.TARGET_URL) {
+      resolvedTarget = await resolveTargetFromUrl(accessToken, process.env.TARGET_URL);
+      context.log(`${LOG_PREFIX} resolved TARGET_URL -> ${resolvedTarget ? JSON.stringify(resolvedTarget) : 'null'}`);
+    }
+    const items = await graphSearch(accessToken);
+    context.log(`${LOG_PREFIX} found ${items.length} mp4 items`);
       // Determine last run time from the timer trigger schedule status (if available)
       let sinceDate = null;
       try {
@@ -102,8 +156,11 @@ module.exports = async function (context, myTimer) {
     for (const item of items) {
       try {
         const name = item.name || 'unknown.mp4';
+        // determine effective target ids (resolved from TARGET_URL takes precedence)
+        const targetDriveId = resolvedTarget && resolvedTarget.driveId ? resolvedTarget.driveId : TARGET_DRIVE_ID;
+        const targetFolderId = resolvedTarget && resolvedTarget.folderId ? resolvedTarget.folderId : TARGET_FOLDER_ID;
         // skip if item already lives inside the target folder
-        if (item.parentReference && item.parentReference.driveId === TARGET_DRIVE_ID && item.parentReference.id === TARGET_FOLDER_ID) { skipped++; continue; }
+        if (item.parentReference && targetDriveId && targetFolderId && item.parentReference.driveId === targetDriveId && item.parentReference.id === targetFolderId) { skipped++; continue; }
         // incremental filter: skip items older than sinceDate
         if (sinceDate) {
           const created = item.createdDateTime || (item.fileSystemInfo && item.fileSystemInfo.createdDateTime) || item.lastModifiedDateTime || (item.fileSystemInfo && item.fileSystemInfo.lastModifiedDateTime);
@@ -114,9 +171,40 @@ module.exports = async function (context, myTimer) {
             }
           }
         }
-        const exists = await targetHasFile(accessToken, name);
-        if (exists) { skipped++; continue; }
-        const res = await copyToTarget(accessToken, item.parentReference.driveId, item.id, name);
+        // List target folder children and delete matching name to implement replace behavior
+        let matchingTargetItem = null;
+        if (targetDriveId && targetFolderId) {
+          try {
+            const listUrl = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(targetDriveId)}/items/${encodeURIComponent(targetFolderId)}/children?$select=name,id`;
+            const lr = await fetch(listUrl, { method: 'GET', headers: { Authorization: `Bearer ${accessToken}` } });
+            if (lr.ok) {
+              const lj = await lr.json();
+              matchingTargetItem = (lj.value || []).find(i => i.name === name) || null;
+            } else {
+              const txt = await lr.text();
+              context.log(`${LOG_PREFIX} error listing target folder: ${lr.status} ${txt}`);
+            }
+          } catch (e) {
+            context.log(`${LOG_PREFIX} error listing target folder: ${e && e.message ? e.message : String(e)}`);
+          }
+        }
+        if (matchingTargetItem) {
+          try {
+            const delUrl = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(targetDriveId)}/items/${encodeURIComponent(matchingTargetItem.id)}`;
+            const dr = await fetch(delUrl, { method: 'DELETE', headers: { Authorization: `Bearer ${accessToken}` } });
+            if (dr.status === 204) {
+              context.log(`${LOG_PREFIX} removed existing target item '${name}' (id=${matchingTargetItem.id}) to replace`);
+            } else {
+              const txt = await dr.text();
+              context.log(`${LOG_PREFIX} failed to delete existing target item: ${dr.status} ${txt}`);
+              skipped++; continue;
+            }
+          } catch (e) {
+            context.log(`${LOG_PREFIX} error deleting target item: ${e && e.message ? e.message : String(e)}`);
+            skipped++; continue;
+          }
+        }
+        const res = await copyToTargetExplicit(accessToken, item.parentReference.driveId, item.id, name, targetDriveId, targetFolderId);
         if (res.ok) { copied++; context.log(`${LOG_PREFIX} copied '${name}'`); } else { failed++; context.log(`${LOG_PREFIX} failed to copy '${name}': ${res.status} ${res.body}`); }
       } catch (e) {
         failed++; context.log(`${LOG_PREFIX} item error: ${e && e.message ? e.message : String(e)}`);

@@ -1,0 +1,53 @@
+{
+  "version": 2,
+  "dgSpecHash": "yMVOPbOhIhg=",
+  "success": false,
+  "projectFilePath": "C:\\Users\\AmitMohanty\\source\\teams-record-meetings-app\\azure\\functions\\copy-worker\\extensions.csproj",
+  "expectedPackageFiles": [],
+  "logs": [
+    {
+      "code": "NU1100",
+      "level": "Error",
+      "message": "Unable to resolve 'Microsoft.NET.Sdk.Functions (>= 4.6.0)' for 'net8.0'.",
+      "projectPath": "C:\\Users\\AmitMohanty\\source\\teams-record-meetings-app\\azure\\functions\\copy-worker\\extensions.csproj",
+      "filePath": "C:\\Users\\AmitMohanty\\source\\teams-record-meetings-app\\azure\\functions\\copy-worker\\extensions.csproj",
+      "libraryId": "Microsoft.NET.Sdk.Functions",
+      "targetGraphs": [
+        "net8.0"
+      ]
+    },
+    {
+      "code": "NU1100",
+      "level": "Error",
+      "message": "Unable to resolve 'Microsoft.NETCore.App.Ref (= 8.0.25)' for 'net8.0'.",
+      "projectPath": "C:\\Users\\AmitMohanty\\source\\teams-record-meetings-app\\azure\\functions\\copy-worker\\extensions.csproj",
+      "filePath": "C:\\Users\\AmitMohanty\\source\\teams-record-meetings-app\\azure\\functions\\copy-worker\\extensions.csproj",
+      "libraryId": "Microsoft.NETCore.App.Ref",
+      "targetGraphs": [
+        "net8.0"
+      ]
+    },
+    {
+      "code": "NU1100",
+      "level": "Error",
+      "message": "Unable to resolve 'Microsoft.WindowsDesktop.App.Ref (= 8.0.25)' for 'net8.0'.",
+      "projectPath": "C:\\Users\\AmitMohanty\\source\\teams-record-meetings-app\\azure\\functions\\copy-worker\\extensions.csproj",
+      "filePath": "C:\\Users\\AmitMohanty\\source\\teams-record-meetings-app\\azure\\functions\\copy-worker\\extensions.csproj",
+      "libraryId": "Microsoft.WindowsDesktop.App.Ref",
+      "targetGraphs": [
+        "net8.0"
+      ]
+    },
+    {
+      "code": "NU1100",
+      "level": "Error",
+      "message": "Unable to resolve 'Microsoft.AspNetCore.App.Ref (= 8.0.25)' for 'net8.0'.",
+      "projectPath": "C:\\Users\\AmitMohanty\\source\\teams-record-meetings-app\\azure\\functions\\copy-worker\\extensions.csproj",
+      "filePath": "C:\\Users\\AmitMohanty\\source\\teams-record-meetings-app\\azure\\functions\\copy-worker\\extensions.csproj",
+      "libraryId": "Microsoft.AspNetCore.App.Ref",
+      "targetGraphs": [
+        "net8.0"
+      ]
+    }
+  ]
+}

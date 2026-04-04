@@ -1,0 +1,39 @@
+{
+  "config": {
+    "bindings": [
+      {
+        "authLevel": "function",
+        "direction": "in",
+        "methods": [
+          "get",
+          "post"
+        ],
+        "name": "req",
+        "type": "httpTrigger"
+      },
+      {
+        "direction": "out",
+        "name": "res",
+        "type": "http"
+      }
+    ]
+  },
+  "configHref": "https://team-recordings-copier.azurewebsites.net/admin/vfs/site/wwwroot/admin_run/function.json",
+  "files": null,
+  "functionAppId": null,
+  "href": "https://team-recordings-copier.azurewebsites.net/admin/functions/admin_run",
+  "id": "/subscriptions/0bb31bb6-b212-492e-b990-1929f6b0d84f/resourceGroups/analytics-yavda-rg/providers/Microsoft.Web/sites/team-recordings-copier/functions/admin_run",
+  "invokeUrlTemplate": "https://team-recordings-copier.azurewebsites.net/api/admin_run",
+  "isDisabled": false,
+  "kind": null,
+  "language": "node",
+  "location": "South India",
+  "name": "team-recordings-copier/admin_run",
+  "resourceGroup": "analytics-yavda-rg",
+  "scriptHref": "https://team-recordings-copier.azurewebsites.net/admin/vfs/site/wwwroot/admin_run/index.js",
+  "scriptRootPathHref": "https://team-recordings-copier.azurewebsites.net/admin/vfs/site/wwwroot/admin_run/",
+  "secretsFileHref": null,
+  "testData": null,
+  "testDataHref": null,
+  "type": "Microsoft.Web/sites/functions"
+}
