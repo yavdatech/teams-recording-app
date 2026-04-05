@@ -5,3 +5,4 @@ kudu/
 logs_team_recordings.zip
 copy-worker-deploy.zip
 deploy-package.zip
+.env
