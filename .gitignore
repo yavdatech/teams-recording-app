@@ -1,0 +1,7 @@
+logs_team_recordings_extracted/
+*.log
+LogFiles/
+kudu/
+logs_team_recordings.zip
+copy-worker-deploy.zip
+deploy-package.zip
